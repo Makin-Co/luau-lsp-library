@@ -22,6 +22,30 @@
 #include <memory>
 #include <unordered_set>
 
+using json = nlohmann::json;
+
+class WorkspaceFolder;
+struct WorkspaceFileResolver;
+
+/// Metadata for custom definitions files supporting generic type lookups.
+/// Parsed from the `--#METADATA#` comment on the first line of a definitions file.
+///
+/// Example usage in a definitions file:
+/// ```
+/// --#METADATA#{"MODULES":["ModuleA","ModuleB"],"MODULES_TYPE":"Library","MODULES_METHOD":"GetModule"}
+/// ```
+struct DefinitionsFileMetadata
+{
+    /// A list of type names that can be looked up by a magic function via a string argument.
+    /// Each name must correspond to a `declare class` in the same definitions file.
+    std::vector<std::string> MODULES{};
+    /// The class type name that has the lookup method (e.g. "Library").
+    std::string MODULES_TYPE{};
+    /// The method name on the class that performs the lookup (e.g. "GetModule").
+    std::string MODULES_METHOD{};
+};
+NLOHMANN_DEFINE_OPTIONAL(DefinitionsFileMetadata, MODULES, MODULES_TYPE, MODULES_METHOD)
+
 class WorkspaceFolder;
 struct WorkspaceFileResolver;
 
@@ -40,8 +64,11 @@ protected:
     WorkspaceFileResolver* fileResolver;
     WorkspaceFolder* workspaceFolder;
 
+    /// Module names parsed from definitions file metadata, used for magic type lookup and autocomplete
+    std::vector<std::string> modulesList;
+
 public:
-    virtual void mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata) {}
+    virtual void mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata);
 
     virtual void onDidChangeWatchedFiles(const lsp::FileEvent& change) {}
 
