@@ -1,4 +1,5 @@
 #include "Platform/LSPPlatform.hpp"
+#include "Platform/MagicFunctions.hpp"
 
 #include "LuauFileUtils.hpp"
 #include "LSP/ClientConfiguration.hpp"
@@ -7,6 +8,7 @@
 #include "Platform/StringRequireSuggester.hpp"
 #include "Platform/StringRequireAutoImporter.hpp"
 
+#include "Luau/BuiltinDefinitions.h"
 #include "Luau/TimeTrace.h"
 #include <memory>
 #include <unordered_set>
@@ -15,6 +17,50 @@ LSPPlatform::LSPPlatform(WorkspaceFileResolver* fileResolver, WorkspaceFolder* w
     : fileResolver(fileResolver)
     , workspaceFolder(workspaceFolder)
 {
+}
+
+void LSPPlatform::mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata)
+{
+    if (!metadata)
+        return;
+
+    DefinitionsFileMetadata defMetadata = metadata->get<DefinitionsFileMetadata>();
+
+    if (defMetadata.MODULES.empty() || defMetadata.MODULES_TYPE.empty() || defMetadata.MODULES_METHOD.empty())
+        return;
+
+    // Store the modules list for use in completionCallback
+    modulesList = defMetadata.MODULES;
+
+    // Look up the class type (e.g. "Library")
+    if (auto classType = globals.globalScope->lookupType(defMetadata.MODULES_TYPE))
+    {
+        if (auto* ctv = Luau::getMutable<Luau::ExternType>(classType->type))
+        {
+            auto methodName = defMetadata.MODULES_METHOD;
+            if (auto prop = ctv->props.find(methodName);
+                prop != ctv->props.end() && prop->second.readTy && Luau::get<Luau::FunctionType>(prop->second.readTy))
+            {
+                Luau::attachTag(*prop->second.readTy, "Modules");
+                Luau::attachMagicFunction(*prop->second.readTy, std::make_shared<MagicTypeLookup>(defMetadata.MODULES, "Invalid module name"));
+            }
+        }
+    }
+
+    // Also check if it's a table type (for `declare Library: { GetModule: ... }` style declarations)
+    if (auto binding = globals.globalScope->lookup(Luau::AstName(defMetadata.MODULES_TYPE.c_str())))
+    {
+        if (auto ttv = Luau::get<Luau::TableType>(*binding))
+        {
+            auto methodName = defMetadata.MODULES_METHOD;
+            if (auto prop = ttv->props.find(methodName);
+                prop != ttv->props.end() && prop->second.readTy && Luau::get<Luau::FunctionType>(prop->second.readTy))
+            {
+                Luau::attachTag(*prop->second.readTy, "Modules");
+                Luau::attachMagicFunction(*prop->second.readTy, std::make_shared<MagicTypeLookup>(defMetadata.MODULES, "Invalid module name"));
+            }
+        }
+    }
 }
 
 std::unique_ptr<LSPPlatform> LSPPlatform::getPlatform(
@@ -172,6 +218,15 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveModule(const Luau::ModuleInf
 std::optional<Luau::AutocompleteEntryMap> LSPPlatform::completionCallback(
     const std::string& tag, std::optional<const Luau::ExternType*> ctx, std::optional<std::string> contents, const Luau::ModuleName& moduleName)
 {
+    if (tag == "Modules" && !modulesList.empty())
+    {
+        Luau::AutocompleteEntryMap result;
+        for (const auto& name : modulesList)
+            result.insert_or_assign(name, Luau::AutocompleteEntry{Luau::AutocompleteEntryKind::String,
+                                              workspaceFolder->frontend.builtinTypes->stringType, false, false, Luau::TypeCorrectKind::Correct});
+        return result;
+    }
+
     return std::nullopt;
 }
 
