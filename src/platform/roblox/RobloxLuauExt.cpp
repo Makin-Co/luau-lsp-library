@@ -1,4 +1,5 @@
 #include "Platform/RobloxPlatform.hpp"
+#include "Platform/MagicFunctions.hpp"
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/ConstraintSolver.h"
@@ -488,7 +489,8 @@ std::optional<Luau::WithPredicate<Luau::TypePackId>> MagicQueryDescendants::hand
         elementType = arena.addType(Luau::UnionType{std::move(classTypes)});
     }
 
-    Luau::TypeId arrayType = arena.addType(Luau::TableType{{}, Luau::TableIndexer{typeChecker.numberType, elementType}, Luau::TypeLevel{}, Luau::TableState::Sealed});
+    Luau::TypeId arrayType =
+        arena.addType(Luau::TableType{{}, Luau::TableIndexer{typeChecker.numberType, elementType}, Luau::TypeLevel{}, Luau::TableState::Sealed});
     return Luau::WithPredicate<Luau::TypePackId>{arena.addTypePack({arrayType})};
 }
 
@@ -556,89 +558,6 @@ static void fixDebugDocumentationSymbol(Luau::TypeId ty, const std::string& libr
     }
 }
 
-struct MagicTypeLookup final : Luau::MagicFunction
-{
-    std::vector<std::string> lookupList;
-    std::string errorMessagePrefix;
-
-    MagicTypeLookup(std::vector<std::string> lookupList, std::string errorMessagePrefix)
-        : lookupList(std::move(lookupList))
-        , errorMessagePrefix(std::move(errorMessagePrefix))
-    {
-    }
-
-    std::optional<Luau::WithPredicate<Luau::TypePackId>> handleOldSolver(struct Luau::TypeChecker& typeChecker,
-        const std::shared_ptr<struct Luau::Scope>& scope, const class Luau::AstExprCall& expr,
-        Luau::WithPredicate<Luau::TypePackId> withPredicate) override;
-    bool infer(const Luau::MagicFunctionCallContext&) override;
-};
-
-std::optional<Luau::WithPredicate<Luau::TypePackId>> MagicTypeLookup::handleOldSolver(struct Luau::TypeChecker& typeChecker,
-    const std::shared_ptr<struct Luau::Scope>&, const class Luau::AstExprCall& expr, Luau::WithPredicate<Luau::TypePackId>)
-{
-    if (expr.args.size < 1)
-        return std::nullopt;
-
-    if (auto str = expr.args.data[0]->as<Luau::AstExprConstantString>())
-    {
-        auto className = std::string(str->value.data, str->value.size);
-        if (contains(lookupList, className))
-        {
-            std::optional<Luau::TypeFun> tfun = typeChecker.globalScope->lookupType(className);
-            if (!tfun || !tfun->typeParams.empty() || !tfun->typePackParams.empty())
-            {
-                typeChecker.reportError(Luau::TypeError{expr.args.data[0]->location, Luau::UnknownSymbol{className, Luau::UnknownSymbol::Type}});
-                return std::nullopt;
-            }
-
-            auto type = Luau::follow(tfun->type);
-
-            Luau::TypeArena& arena = typeChecker.currentModule->internalTypes;
-            Luau::TypePackId classTypePack = arena.addTypePack({type});
-            return Luau::WithPredicate<Luau::TypePackId>{classTypePack};
-        }
-        else
-        {
-            typeChecker.reportError(Luau::TypeError{expr.args.data[0]->location, Luau::GenericError{errorMessagePrefix + " '" + className + "'"}});
-        }
-    }
-
-    return std::nullopt;
-};
-
-bool MagicTypeLookup::infer(const Luau::MagicFunctionCallContext& context)
-{
-    if (context.callSite->args.size < 1)
-        return false;
-
-    if (auto str = context.callSite->args.data[0]->as<Luau::AstExprConstantString>())
-    {
-        auto className = std::string(str->value.data, str->value.size);
-        if (contains(lookupList, className))
-        {
-            std::optional<Luau::TypeFun> tfun = context.solver->rootScope->lookupType(className);
-            if (!tfun || !tfun->typeParams.empty() || !tfun->typePackParams.empty())
-            {
-                context.solver->reportError(
-                    Luau::TypeError{context.callSite->args.data[0]->location, Luau::UnknownSymbol{className, Luau::UnknownSymbol::Type}});
-                return false;
-            }
-
-            auto type = Luau::follow(tfun->type);
-            Luau::TypePackId classTypePack = context.solver->arena->addTypePack({type});
-            asMutable(context.result)->ty.emplace<Luau::BoundTypePack>(classTypePack);
-            return true;
-        }
-        else
-        {
-            context.solver->reportError(
-                Luau::TypeError{context.callSite->args.data[0]->location, Luau::GenericError{errorMessagePrefix + " '" + className + "'"}});
-        }
-    }
-
-    return false;
-};
-
 static void attachMagicFunctionSafe(Luau::TableType::Props& props, const char* property, std::shared_ptr<Luau::MagicFunction> magic)
 {
     if (const auto prop = props.find(property); prop != props.end())
@@ -660,6 +579,9 @@ static void attachTagSafe(Luau::TableType::Props& props, const char* property, c
 
 void RobloxPlatform::mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata)
 {
+    // Apply base platform mutations (e.g. custom MODULES metadata)
+    LSPPlatform::mutateRegisteredDefinitions(globals, metadata);
+
     // HACK: Mark "debug" using `@luau` symbol instead
     if (auto it = globals.globalScope->bindings.find(Luau::AstName("debug")); it != globals.globalScope->bindings.end())
     {
