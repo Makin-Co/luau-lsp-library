@@ -62,6 +62,7 @@ target_sources(Luau.LanguageServer PRIVATE
         src/CliConfigurationParser.cpp
         src/platform/AutoImports.cpp
         src/platform/LSPPlatform.cpp
+        src/platform/MagicFunctions.cpp
         src/platform/StringRequireAutoImporter.cpp
         src/platform/StringRequireSuggester.cpp
         src/platform/roblox/InstanceRequireAutoImporter.cpp
