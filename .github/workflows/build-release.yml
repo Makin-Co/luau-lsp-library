@@ -40,7 +40,11 @@ jobs:
           mkdir staging
           cp "${{ matrix.binary-path }}" staging/
           cd staging
-          zip ../server.zip *
+          if command -v zip &> /dev/null; then
+            zip ../server.zip *
+          else
+            7z a ../server.zip *
+          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
