@@ -2,6 +2,56 @@
 
 An implementation of a language server for the [Luau](https://github.com/Roblox/luau) programming language.
 
+## Fork Changes
+
+The fork of this repository for Makin & Co projects allows for magic lookup functionality for
+definition files with metadata:
+
+```luau
+--#METADATA#{"MODULES":["Example","Example2"],"MODULES_TYPE":"LIBRARY_NAME","MODULES_METHOD":"GET_NAME"}
+```
+
+Therefore, allowing users to receive automatic type inferrence for classes gotten with `MODULES_METHOD`,
+as well as providing autofill suggestions for easier access.
+
+If a module is not defined in the `.d.luau` declaration file in metadata, it will appear as a TypeError.
+It will still appear if it has no corresponding declaration, but will not infer its own class.
+
+```luau
+--#METADATA#{"MODULES":["Example","Example2"],"MODULES_TYPE":"LIBRARY_NAME","MODULES_METHOD":"GET_NAME"}
+
+declare class Example
+    function doSomething(self, name: string): number
+end
+
+declare class Example2
+    function doSomething(self, name: string): number
+end
+
+declare class LIBRARY_NAME
+    function GET_NAME(self, name: string): any
+end
+```
+
+The fork requires the `luau-lsp.server.path` to point at the built binary from the terminal:
+
+```bash
+cmake --build build --target Luau.LanguageServer.CLI --config Debug
+```
+
+From `.vscode/settings.json`, the standard configuration is as expected:
+
+```json
+{
+  "luau-lsp.server.path": "./tools/luau-lsp.exe",
+  "luau-lsp.types.definitionFiles": { "@dsd": "./scripts/globals.d.luau" },
+  "luau-lsp.types.documentationFiles": ["./scripts/globals.docs.json"],
+  "luau-lsp.platform.type": "roblox"
+}
+```
+
+Documentation is optional but most Makin & Co projects will provide it.
+
 ## Getting Started
 
 Install the extension from the VSCode Marketplace or OpenVSX Registry:
