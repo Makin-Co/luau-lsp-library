@@ -462,3 +462,76 @@ TEST_CASE_FIXTURE(Fixture, "query_descendants_unknown_class")
 }
 
 TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("ModulesMagicFunctions");
+
+static const std::string MODULES_DEFINITIONS =
+    R"(--#METADATA#{"MODULES":["ModuleA","ModuleB"],"MODULES_TYPE":"Library","MODULES_METHOD":"GetModule"}
+
+declare class ModuleA
+    function doSomething(self): string
+end
+
+declare class ModuleB
+    function doOtherThing(self): number
+end
+
+declare class Library
+    function GetModule(self, name: string): Instance
+end
+
+declare Library: Library
+)";
+
+TEST_CASE_FIXTURE(Fixture, "get_module_returns_specific_type")
+{
+    loadDefinition("@modules", MODULES_DEFINITIONS);
+
+    auto result = check(R"(
+        local x = Library:GetModule("ModuleA")
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("x")) == "ModuleA");
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_module_returns_correct_type_for_each_module")
+{
+    loadDefinition("@modules", MODULES_DEFINITIONS);
+
+    auto result = check(R"(
+        local a = Library:GetModule("ModuleA")
+        local b = Library:GetModule("ModuleB")
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("a")) == "ModuleA");
+    CHECK(Luau::toString(requireType("b")) == "ModuleB");
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_module_unknown_module_reports_error")
+{
+    loadDefinition("@modules", MODULES_DEFINITIONS);
+
+    auto result = check(R"(
+        local x = Library:GetModule("UnknownModule")
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Invalid module name 'UnknownModule'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_module_members_accessible")
+{
+    loadDefinition("@modules", MODULES_DEFINITIONS);
+
+    auto result = check(R"(
+        local x = Library:GetModule("ModuleA")
+        local y = x:doSomething()
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("y")) == "string");
+}
+
+TEST_SUITE_END();

@@ -2168,3 +2168,47 @@ TEST_CASE_FIXTURE(Fixture, "sourcemap_autocomplete_shows_self_alias_children")
 }
 
 TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("ModulesAutocomplete");
+
+static const std::string MODULES_DEFINITIONS =
+    R"(--#METADATA#{"MODULES":["ModuleA","ModuleB"],"MODULES_TYPE":"Library","MODULES_METHOD":"GetModule"}
+
+declare class ModuleA
+    function doSomething(self): string
+end
+
+declare class ModuleB
+    function doOtherThing(self): number
+end
+
+declare class Library
+    function GetModule(self, name: string): Instance
+end
+
+declare Library: Library
+)";
+
+TEST_CASE_FIXTURE(Fixture, "get_module_contains_module_names")
+{
+    loadDefinition("@modules", MODULES_DEFINITIONS);
+
+    auto [source, marker] = sourceWithMarker(R"(
+        --!strict
+        Library:GetModule("|")
+    )");
+
+    auto uri = newDocument("foo.luau", source);
+
+    lsp::CompletionParams params;
+    params.textDocument = lsp::TextDocumentIdentifier{uri};
+    params.position = marker;
+
+    auto result = workspace.completion(params, nullptr);
+
+    CHECK_EQ(result.size(), 2);
+    checkStringCompletionExists(result, "ModuleA");
+    checkStringCompletionExists(result, "ModuleB");
+}
+
+TEST_SUITE_END();

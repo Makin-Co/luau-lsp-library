@@ -175,7 +175,8 @@ Luau::LoadDefinitionFileResult Fixture::loadDefinition(const std::string& packag
     if (!FFlag::LuauSolverV2)
         Luau::unfreeze(workspace.frontend.globalsForAutocomplete.globalTypes);
 
-    auto result = workspace.loadDefinitionFile(packageName, source);
+    auto metadata = types::parseDefinitionsFileMetadata(source);
+    auto result = workspace.loadDefinitionFile(packageName, source, metadata);
 
     Luau::freeze(workspace.frontend.globals.globalTypes);
     if (!FFlag::LuauSolverV2)
