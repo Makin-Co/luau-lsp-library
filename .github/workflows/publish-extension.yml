@@ -56,15 +56,6 @@ jobs:
     needs: build-server
     name: Package & Publish
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - artifact-name: server-win32-x64
-            vsce-target: win32-x64
-          - artifact-name: server-linux-x64
-            vsce-target: linux-x64
-          - artifact-name: server-darwin-x64
-            vsce-target: darwin-x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,36 +69,33 @@ jobs:
         working-directory: editors/code
         run: npm ci
 
-      - name: Download server binary
+      - name: Download all server binaries
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.artifact-name }}
-          path: editors/code/bin
+          path: server-binaries
 
-      - name: Make binary executable
-        run: chmod +x editors/code/bin/server* || true
-
-      - name: Package VSIX
+      - name: Package VSIX for each platform
         working-directory: editors/code
-        run: npx @vscode/vsce package --target ${{ matrix.vsce-target }} -o luau-lsp-${{ matrix.vsce-target }}.vsix
+        run: |
+          for target in win32-x64 linux-x64 darwin-x64; do
+            rm -rf bin && mkdir bin
+            cp ../../server-binaries/server-${target}/* bin/
+            chmod +x bin/server* || true
+            npx @vscode/vsce package --target ${target} -o luau-lsp-${target}.vsix
+          done
 
-      - name: Upload VSIX artifact
+      - name: Upload VSIX artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vsix-${{ matrix.vsce-target }}
+          name: vsix-all
           path: editors/code/*.vsix
 
       - name: Publish to VS Code Marketplace
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: editors/code
-        run: npx @vscode/vsce publish --packagePath luau-lsp-${{ matrix.vsce-target }}.vsix
+        run: npx @vscode/vsce publish --packagePath luau-lsp-win32-x64.vsix --packagePath luau-lsp-linux-x64.vsix --packagePath luau-lsp-darwin-x64.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      # Uncomment to also publish to Open VSX Registry:
-      # - name: Publish to Open VSX
-      #   if: startsWith(github.ref, 'refs/tags/')
-      #   working-directory: editors/code
       #   run: npx ovsx publish luau-lsp-${{ matrix.vsce-target }}.vsix --target ${{ matrix.vsce-target }}
       #   env:
       #     OVSX_PAT: ${{ secrets.OVSX_PAT }}
