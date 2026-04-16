@@ -1,6 +1,6 @@
 {
-  "name": "luau-lsp",
-  "displayName": "Luau Language Server",
+  "name": "luau-lsp-library",
+  "displayName": "Luau Language Server for Library",
   "description": "A Language Server Client for Luau",
   "author": "JohnnyMorganz",
   "publisher": "MakinCo",
