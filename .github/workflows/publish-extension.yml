@@ -1,0 +1,113 @@
+name: Publish Extension
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-server:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact-name: server-win32-x64
+            binary-name: server.exe
+            binary-path: build/Release/luau-lsp.exe
+            vsce-target: win32-x64
+          - os: ubuntu-22.04
+            artifact-name: server-linux-x64
+            binary-name: server
+            binary-path: build/luau-lsp
+            vsce-target: linux-x64
+          - os: macos-latest
+            artifact-name: server-darwin-x64
+            binary-name: server
+            binary-path: build/luau-lsp
+            vsce-target: darwin-x64
+
+    name: Build Server (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build Server
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DLSP_STATIC_CRT:BOOL=ON
+          cmake --build . --config Release --target Luau.LanguageServer.CLI -j 3
+
+      - name: Stage binary
+        shell: bash
+        run: |
+          mkdir -p staging
+          cp "${{ matrix.binary-path }}" "staging/${{ matrix.binary-name }}"
+
+      - name: Upload server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: staging/
+
+  package-and-publish:
+    needs: build-server
+    name: Package & Publish
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - artifact-name: server-win32-x64
+            vsce-target: win32-x64
+          - artifact-name: server-linux-x64
+            vsce-target: linux-x64
+          - artifact-name: server-darwin-x64
+            vsce-target: darwin-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install extension dependencies
+        working-directory: editors/code
+        run: npm ci
+
+      - name: Download server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: editors/code/bin
+
+      - name: Make binary executable
+        run: chmod +x editors/code/bin/server* || true
+
+      - name: Package VSIX
+        working-directory: editors/code
+        run: npx @vscode/vsce package --target ${{ matrix.vsce-target }} -o luau-lsp-${{ matrix.vsce-target }}.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.vsce-target }}
+          path: editors/code/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: editors/code
+        run: npx @vscode/vsce publish --target ${{ matrix.vsce-target }} --packagePath luau-lsp-${{ matrix.vsce-target }}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      # Uncomment to also publish to Open VSX Registry:
+      # - name: Publish to Open VSX
+      #   if: startsWith(github.ref, 'refs/tags/')
+      #   working-directory: editors/code
+      #   run: npx ovsx publish luau-lsp-${{ matrix.vsce-target }}.vsix --target ${{ matrix.vsce-target }}
+      #   env:
+      #     OVSX_PAT: ${{ secrets.OVSX_PAT }}
