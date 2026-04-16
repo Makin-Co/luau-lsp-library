@@ -100,7 +100,7 @@ jobs:
       - name: Publish to VS Code Marketplace
         if: startsWith(github.ref, 'refs/tags/')
         working-directory: editors/code
-        run: npx @vscode/vsce publish --target ${{ matrix.vsce-target }} --packagePath luau-lsp-${{ matrix.vsce-target }}.vsix
+        run: npx @vscode/vsce publish --packagePath luau-lsp-${{ matrix.vsce-target }}.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
